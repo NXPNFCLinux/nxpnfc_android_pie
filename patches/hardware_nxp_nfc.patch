@@ -1,0 +1,121 @@
+diff --git a/1.1/Nfc.h b/1.1/Nfc.h
+index bd45727..19572b8 100755
+--- a/1.1/Nfc.h
++++ b/1.1/Nfc.h
+@@ -95,7 +95,8 @@ struct Nfc : public V1_1::INfc, public hidl_death_recipient {
+   }
+ 
+   virtual void serviceDied(uint64_t /*cookie*/, const wp<IBase>& /*who*/) {
+-    close();
++    //close();
++    abort();
+   }
+ 
+  private:
+diff --git a/extns/intf/nxpnfc/1.0/manifest.xml b/extns/intf/nxpnfc/1.0/manifest.xml
+index ceabdbd..fcb4033 100644
+--- a/extns/intf/nxpnfc/1.0/manifest.xml
++++ b/extns/intf/nxpnfc/1.0/manifest.xml
+@@ -3,12 +3,20 @@
+         <name>android.hardware.nfc</name>
+         <transport>hwbinder</transport>
+         <impl level="generic"></impl>
+-        <version>1.0</version>
++        <version>1.1</version>
++        <interface>
++            <name>INfc</name>
++            <instance>default</instance>
++        </interface>
+     </hal>
+     <hal format="hidl">
+         <name>vendor.nxp.nxpnfc</name>
+         <transport>hwbinder</transport>
+         <impl level="generic"></impl>
+         <version>1.0</version>
++        <interface>
++            <name>INfc</name>
++            <instance>default</instance>
++        </interface>
+     </hal>
+ </manifest>
+diff --git a/halimpl/hal/phNxpNciHal.cc b/halimpl/hal/phNxpNciHal.cc
+index f06138b..400ce48 100755
+--- a/halimpl/hal/phNxpNciHal.cc
++++ b/halimpl/hal/phNxpNciHal.cc
+@@ -966,7 +966,7 @@ int phNxpNciHal_write_unlocked(uint16_t data_len, const uint8_t* p_data) {
+   /* check for write synchronyztion */
+   if(phNxpNciHal_check_ncicmd_write_window(nxpncihal_ctrl.cmd_len,
+                          nxpncihal_ctrl.p_cmd_data) != NFCSTATUS_SUCCESS) {
+-    NXPLOG_NCIHAL_D("phNxpNciHal_write_unlocked Create cb data failed");
++    NXPLOG_NCIHAL_D("phNxpNciHal_write_unlocked check nci write window failed");
+     data_len = 0;
+     goto clean_and_return;
+   }
+@@ -1644,8 +1644,10 @@ int phNxpNciHal_core_initialized(uint8_t* p_core_init_rsp_params) {
+ 
+   retlen = 0;
+ 
++  NXPLOG_NCIHAL_D("Performing NAME_NXP_CORE_CONF Settings");
+   isfound =
+       GetNxpByteArrayValue(NAME_NXP_CORE_CONF, (char*)buffer, bufflen, &retlen);
++  NXPLOG_NCIHAL_D("NAME_NXP_CORE_CONF Settings Found - %d Len: %ld", isfound, retlen);
+   if (retlen > 0) {
+     /* NXP ACT Proprietary Ext */
+     status = phNxpNciHal_send_ext_cmd(retlen, buffer);
+diff --git a/halimpl/hal/phNxpNciHal_ext.cc b/halimpl/hal/phNxpNciHal_ext.cc
+index 646a07b..45c1354 100755
+--- a/halimpl/hal/phNxpNciHal_ext.cc
++++ b/halimpl/hal/phNxpNciHal_ext.cc
+@@ -12,7 +12,9 @@
+  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+  * See the License for the specific language governing permissions and
+  * limitations under the License.
+- */#include <log/log.h>
++ */
++
++#include <log/log.h>
+ 
+ #include <phDal4Nfc_messageQueueLib.h>
+ #include <phNxpConfig.h>
+@@ -854,6 +856,29 @@ NFCSTATUS phNxpNciHal_write_ext(uint16_t* cmd_len, uint8_t* p_cmd_data,
+     }
+   }
+ 
++  if ((nfcFL.chipType == pn548C2) &&
++          (p_cmd_data[0] == 0x20 && p_cmd_data[1] == 0x02)) {
++      uint8_t temp;
++      uint8_t* p = p_cmd_data + 4;
++      uint8_t* end = p_cmd_data + *cmd_len;
++      while (p < end) {
++          if (*p == 0x53)  // LF_T3T_FLAGS
++          {
++              NXPLOG_NCIHAL_D("> Going through workaround - LF_T3T_FLAGS swap");
++              temp = *(p + 3);
++              *(p + 3) = *(p + 2);
++              *(p + 2) = temp;
++              NXPLOG_NCIHAL_D("> Going through workaround - LF_T3T_FLAGS - End");
++              status = NFCSTATUS_SUCCESS;
++              break;
++          }
++          if (*p == 0xA0) {
++              p += *(p + 2) + 3;
++          } else {
++              p += *(p + 1) + 2;
++          }
++      }
++  }
+ 
+   return status;
+ }
+diff --git a/halimpl/utils/NxpNfcCapability.cpp b/halimpl/utils/NxpNfcCapability.cpp
+index 720ed08..a40e281 100644
+--- a/halimpl/utils/NxpNfcCapability.cpp
++++ b/halimpl/utils/NxpNfcCapability.cpp
+@@ -89,6 +89,7 @@ tNFC_chipType capability::getChipType(uint8_t* msg, uint16_t msg_len) {
+ 
+         case 0x28:
+         case 0x48:  // NQ210
++        case 0x88:  // PN7150 
+           chipType = pn548C2;
+           break;
+ 
