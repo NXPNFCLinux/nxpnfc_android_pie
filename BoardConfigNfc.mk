@@ -14,6 +14,8 @@
 
 LOCAL_STEM := nfc/BoardConfigNfcPartial.mk
 
+BOARD_KERNEL_CMDLINE += androidboot.selinux=permissive
+
 DEVICE_MANIFEST_FILE += vendor/nxp/nfc/manifest.xml
 
 -include vendor/nxp/$(LOCAL_STEM)
