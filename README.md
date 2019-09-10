@@ -12,4 +12,5 @@ Any question ? see [NXP Community](https://community.nxp.com/community/identific
 
 Release version
 ---------------
+ * R1.1: Added anti-tearing recovery mechanism of new PN7150
  * R1.0: Initial release based on NFC_AOSP_PI_v1.0.0 tag
